@@ -68,6 +68,8 @@ interface Recv {
   matchedBy?: 'name' | 'amount'
   /** 期限内に入金があり、未入金リストには入れなかったもの */
   onTime?: boolean
+  /** 基幹システムで付けるタグ（確約済み・分割・長期了承済み・黄信号・赤信号・弁護士対応中） */
+  tags?: string[]
   candidates?: Candidate[]
   dismissed?: string[]
   deposit?: Candidate
@@ -576,19 +578,43 @@ export async function postChatwork(roomId: string, token: string, body: string) 
   if (!res.ok) throw new Error(`チャットワークへの送信に失敗しました（${res.status}）：${(await res.text()).slice(0, 200)}`)
 }
 
+/** 入金期限からの経過日数で 3 つに分ける（基幹システムの画面と同じ）：新規未入金＝30日未満（期限前・期限なしも）／未入金＝30〜60日／長期未入金＝61日以上 */
+export const AGE_GROUPS = [
+  { key: 'long', label: '長期未入金', note: '入金期限から61日以上' },
+  { key: 'mid', label: '未入金', note: '入金期限から30〜60日' },
+  { key: 'new', label: '新規未入金', note: '入金期限から30日未満' },
+] as const
+export function overdueDays(r: Recv, today: string) {
+  return r.dueDate && r.dueDate < today ? Math.floor((dayOf(today).getTime() - dayOf(r.dueDate).getTime()) / 86400000) : 0
+}
+export function ageGroup(r: Recv, today: string): 'long' | 'mid' | 'new' {
+  const n = overdueDays(r, today)
+  return n < 30 ? 'new' : n <= 60 ? 'mid' : 'long'
+}
+
 export function reminderText(list: Recv[], today: string, day: number) {
   const open = list.filter((r) => r.status === 'open').sort((a, b) => String(a.dueDate || '9999').localeCompare(String(b.dueDate || '9999')))
-  const total = open.reduce((s, r) => s + Math.max(0, remaining(r)), 0)
-  const late = open.filter((r) => r.dueDate && r.dueDate < today)
-  const lines = open.slice(0, 60).map((r) => {
-    const over = r.dueDate && r.dueDate < today ? Math.floor((dayOf(today).getTime() - dayOf(r.dueDate).getTime()) / 86400000) : 0
+  const due = open.filter((r) => remaining(r) >= 0), over = open.filter((r) => remaining(r) < 0)
+  const total = due.reduce((s, r) => s + Math.max(0, remaining(r)), 0)
+  const late = due.filter((r) => r.dueDate && r.dueDate < today)
+  const MAX = 40
+  const line = (r: Recv) => {
+    const n = overdueDays(r, today)
     const rest = remaining(r), bill = Number(r.amount) || 0
-    return `・${honor(r.name)}　${rest < 0 ? `過入金 ${yen(-rest)}` : yen(rest)}${rest !== bill ? `（請求 ${yen(bill)}）` : ''}　期限 ${md(r.dueDate)}${over ? `（${over}日超過）` : ''}${r.ownerName ? `　担当：${r.ownerName}` : ''}${r.kind || r.item ? `　${[r.kind, r.item].filter(Boolean).join('・')}` : ''}`
+    const tags = (r.tags ?? []).filter(Boolean)
+    return `・${honor(r.name)}${tags.length ? `【${tags.join('・')}】` : ''}　${rest < 0 ? `過入金 ${yen(-rest)}` : yen(rest)}${rest !== bill ? `（請求 ${yen(bill)}）` : ''}　期限 ${md(r.dueDate)}${n ? `（${n}日超過）` : ''}${r.ownerName ? `　担当：${r.ownerName}` : ''}${r.kind || r.item ? `　${[r.kind, r.item].filter(Boolean).join('・')}` : ''}${r.expectedDate ? `　入金予定：${r.expectedDate}` : ''}`
+  }
+  const block = (title: string, rows: Recv[], sumText: string) =>
+    `■ ${title}　${rows.length} 件${sumText}\n` +
+    (rows.length ? rows.slice(0, MAX).map(line).join('\n') + (rows.length > MAX ? `\n…ほか ${rows.length - MAX} 件` : '') : '・なし')
+  const sections = AGE_GROUPS.map((g) => {
+    const rows = due.filter((r) => ageGroup(r, today) === g.key)
+    return block(`${g.label}（${g.note}）`, rows, `・合計 ${yen(rows.reduce((s, r) => s + Math.max(0, remaining(r)), 0))}`)
   })
-  const more = open.length > 60 ? `\n…ほか ${open.length - 60} 件` : ''
+  if (over.length) sections.push(block('過入金（入金が請求より多い。内容の確認を）', over, ''))
   return `[info][title]【アクセルダッシュ】未入金のリマインド（${Number(today.slice(5, 7))}月・${day}営業日目）[/title]` +
-    `未入金 ${open.length} 件・未入金額の合計 ${yen(total)}（うち入金期限を過ぎたもの ${late.length} 件）\n` +
-    `担当の方は状況の確認と、必要ならお客様へのご連絡をお願いします。\n\n${lines.join('\n')}${more}\n\n一覧：${CRM_URL}[/info]`
+    `未入金 ${due.length} 件・未入金額の合計 ${yen(total)}（うち入金期限を過ぎたもの ${late.length} 件）\n` +
+    `担当の方は状況の確認と、必要ならお客様へのご連絡をお願いします。\n\n${sections.join('\n\n')}\n\n一覧：${CRM_URL}[/info]`
 }
 export function paidText(list: Recv[]) {
   const lines = list.map((r) => `・${honor(r.name)}　${yen(Number(r.amount) || 0)}　入金 ${md(r.paidAt)}${r.paidBy === 'auto' ? (r.matchedBy === 'amount' ? '（自動照合・金額のみ。念のため確認を）' : '（自動照合）') : ''}${r.ownerName ? `　担当：${r.ownerName}` : ''}${r.kind || r.item ? `　${[r.kind, r.item].filter(Boolean).join('・')}` : ''}`)
