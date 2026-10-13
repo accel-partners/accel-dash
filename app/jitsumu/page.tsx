@@ -19,10 +19,12 @@ import { LogOut, Plus, Search, X, ArrowLeft, Users, CalendarDays, BarChart3, Pen
  *  - 開催回：月 × 会場ごとの申込者と、開催前後のチェック（返信〜実績証明書返送）
  *  - 申込者：同じ人の参加歴・合格年度・名刺情報をすぐ引ける
  *  - 集計：年別（リアル／Zoom）・月別・会場別
- * 権限は DB 側（RLS: is_staff）で担当者に限っている。画面のガードは表示用。
+ * 権限は DB 側（RLS: can_use_app('/jitsumu')）で、担当者（@accel-partners.co.jp）と、
+ * ポータルのユーザー管理で「実務従事」にチェックを付けた人に限っている。画面のガードは表示用。
  */
 
 const STAFF_DOMAIN = '@accel-partners.co.jp'
+const APP_SLUG = '/jitsumu'
 type Tab = 'sessions' | 'people' | 'stats'
 type Notice = { kind: 'ok' | 'ng'; text: string } | null
 
@@ -34,7 +36,7 @@ export default function JitsumuPage() {
   const router = useRouter()
   const [loading, setLoading] = useState(true)
   const [email, setEmail] = useState('')
-  const [isStaff, setIsStaff] = useState(false)
+  const [allowed, setAllowed] = useState(false)
   const [notice, setNotice] = useState<Notice>(null)
 
   const [sessions, setSessions] = useState<JSession[]>([])
@@ -74,9 +76,14 @@ export default function JitsumuPage() {
       }
       const mail = data.session.user.email ?? ''
       setEmail(mail)
-      const staff = mail.endsWith(STAFF_DOMAIN)
-      setIsStaff(staff)
-      if (staff) await load()
+      // 担当者は常に可。それ以外はポータルで「実務従事」にチェックが付いている人だけ（DB の can_use_app と同じ判定）
+      let ok = mail.endsWith(STAFF_DOMAIN)
+      if (!ok) {
+        const { data: can } = await supabase.rpc('can_use_app', { p_slug: APP_SLUG })
+        ok = can === true
+      }
+      setAllowed(ok)
+      if (ok) await load()
       setLoading(false)
     }
     void init()
@@ -240,8 +247,11 @@ export default function JitsumuPage() {
           </div>
         )}
 
-        {!isStaff ? (
-          <div className="rounded-xl border border-border-soft bg-surface p-10 text-center text-black/70">このページは社内メンバー専用です。</div>
+        {!allowed ? (
+          <div className="rounded-xl border border-border-soft bg-surface p-10 text-center text-black/70">
+            このページを見る権限がありません。<br />
+            <span className="text-sm">管理者に、ポータルのユーザー管理で「実務従事」にチェックを付けてもらってください。</span>
+          </div>
         ) : (
           <>
             <div className="mb-6 flex flex-wrap items-center justify-between gap-3">
