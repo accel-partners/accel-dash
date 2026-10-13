@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { canUseApp, NO_ACCESS_TEXT, NO_ACCESS_HINT } from '@/lib/appAccess'
 import { ArrowLeft, Link2, RefreshCw, Unplug, CheckCircle2, AlertTriangle, Clock } from 'lucide-react'
 
 /**
@@ -16,7 +17,6 @@ import { ArrowLeft, Link2, RefreshCw, Unplug, CheckCircle2, AlertTriangle, Clock
  * トークンや Secret はこの画面に一切出さない。表示するのは接続の有無と同期の記録だけ。
  */
 
-const STAFF_DOMAIN = '@accel-partners.co.jp'
 
 interface Status {
   configured: boolean
@@ -94,9 +94,10 @@ export default function MfPage() {
       }
       const mail = data.session.user.email ?? ''
       setEmail(mail)
-      const staff = mail.endsWith(STAFF_DOMAIN)
-      setIsStaff(staff)
-      if (staff) await loadStatus()
+      // 担当者、またはポータルで「マネーフォワード連携」にチェックが付いている人（lib/appAccess.ts）
+      const ok = await canUseApp('/mf', mail)
+      setIsStaff(ok)
+      if (ok) await loadStatus()
       setLoading(false)
       // コールバックからの戻り（?connected=1 / ?error=...）。useSearchParams は Suspense が要るので直接読む
       const params = new URLSearchParams(window.location.search)
@@ -200,7 +201,7 @@ export default function MfPage() {
         )}
 
         {!isStaff ? (
-          <div className="rounded-xl border border-border-soft bg-surface p-10 text-center text-black/70">このページは社内メンバー専用です。</div>
+          <div className="rounded-xl border border-border-soft bg-surface p-10 text-center text-black/70">{NO_ACCESS_TEXT}<br /><span className="text-sm">{NO_ACCESS_HINT}</span></div>
         ) : !status ? null : (
           <div className="space-y-6">
             <div>

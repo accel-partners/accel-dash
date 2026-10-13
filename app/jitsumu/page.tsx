@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { canUseApp, NO_ACCESS_TEXT, NO_ACCESS_HINT } from '@/lib/appAccess'
 import { signOut } from '@/lib/auth'
 import {
   CHECKS, MINOR_CHECKS, VENUES, GROUPS, POINTS, PASS_YEARS,
@@ -19,11 +20,10 @@ import { LogOut, Plus, Search, X, ArrowLeft, Users, CalendarDays, BarChart3, Pen
  *  - 開催回：月 × 会場ごとの申込者と、開催前後のチェック（返信〜実績証明書返送）
  *  - 申込者：同じ人の参加歴・合格年度・名刺情報をすぐ引ける
  *  - 集計：年別（リアル／Zoom）・月別・会場別
- * 権限は DB 側（RLS: can_use_app('/jitsumu')）で、担当者（@accel-partners.co.jp）と、
+ * 権限は DB 側（RLS: can_use_app('/jitsumu')、supabase/app_access_open.sql）で、担当者（@accel-partners.co.jp）と、
  * ポータルのユーザー管理で「実務従事」にチェックを付けた人に限っている。画面のガードは表示用。
  */
 
-const STAFF_DOMAIN = '@accel-partners.co.jp'
 const APP_SLUG = '/jitsumu'
 type Tab = 'sessions' | 'people' | 'stats'
 type Notice = { kind: 'ok' | 'ng'; text: string } | null
@@ -76,12 +76,8 @@ export default function JitsumuPage() {
       }
       const mail = data.session.user.email ?? ''
       setEmail(mail)
-      // 担当者は常に可。それ以外はポータルで「実務従事」にチェックが付いている人だけ（DB の can_use_app と同じ判定）
-      let ok = mail.endsWith(STAFF_DOMAIN)
-      if (!ok) {
-        const { data: can } = await supabase.rpc('can_use_app', { p_slug: APP_SLUG })
-        ok = can === true
-      }
+      // 担当者、またはポータルで「実務従事」にチェックが付いている人（lib/appAccess.ts）
+      const ok = await canUseApp(APP_SLUG, mail)
       setAllowed(ok)
       if (ok) await load()
       setLoading(false)
@@ -249,8 +245,9 @@ export default function JitsumuPage() {
 
         {!allowed ? (
           <div className="rounded-xl border border-border-soft bg-surface p-10 text-center text-black/70">
-            このページを見る権限がありません。<br />
-            <span className="text-sm">管理者に、ポータルのユーザー管理で「実務従事」にチェックを付けてもらってください。</span>
+            {NO_ACCESS_TEXT}
+            <br />
+            <span className="text-sm">{NO_ACCESS_HINT}</span>
           </div>
         ) : (
           <>

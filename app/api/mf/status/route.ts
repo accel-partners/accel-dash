@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin'
+import { supabaseAdmin, requireAppUser } from '@/lib/supabaseAdmin'
 import { getConnection, disconnect, mfConfigured, mfRedirectUri, MF_SCOPES } from '@/lib/mf'
 
 export const dynamic = 'force-dynamic'
 
 /** 接続状態と直近の同期ログ。トークンそのものは返さない */
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin(req)
+  const auth = await requireAppUser(req, '/mf')
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status })
   try {
     const [c, runs] = await Promise.all([
@@ -38,7 +38,7 @@ export async function GET(req: NextRequest) {
 
 /** 接続を解除する（保存したトークンを消す） */
 export async function DELETE(req: NextRequest) {
-  const auth = await requireAdmin(req)
+  const auth = await requireAppUser(req, '/mf')
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status })
   try {
     await disconnect()

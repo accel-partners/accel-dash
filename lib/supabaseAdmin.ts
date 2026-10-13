@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js'
+import { appKey } from './appKeyShared'
 
 // サーバー専用。service_role キーを使うので絶対にクライアントへ import しないこと。
 // 貼り付けで紛れ込んだ空白・改行は取り除く（キーの途中に空白があるとヘッダーに載せられず、全 API が失敗する）
@@ -55,6 +56,28 @@ export async function requireAdmin(req: Request): Promise<AuthResult> {
   }
 
   return { ok: true, user: { id: data.user.id, email: data.user.email } }
+}
+
+/**
+ * そのアプリの API を使えるか：担当者、またはポータルでそのアプリにチェックが付いている人（lib/appAccess.ts と同じ決まり）。
+ * ユーザー管理・アプリの編集など管理の操作は requireAdmin のまま（担当者だけ）。
+ */
+export async function requireAppUser(req: Request, slug: string): Promise<AuthResult> {
+  const auth = await requireAdmin(req)
+  if (auth.ok || auth.status !== 403) return auth
+  const token = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '').trim()
+  const { data } = await supabaseAdmin.auth.getUser(token)
+  const user = data?.user
+  if (!user?.email) return auth
+  const [{ data: apps }, { data: rows }] = await Promise.all([
+    supabaseAdmin.from('apps').select('id, slug'),
+    supabaseAdmin.from('app_access').select('app_id').eq('user_id', user.id),
+  ])
+  const want = appKey(slug)
+  const mine = new Set((rows ?? []).map((r: { app_id: string }) => String(r.app_id)))
+  const ok = (apps ?? []).some((a: { id: string; slug: string }) => mine.has(String(a.id)) && appKey(a.slug) === want)
+  if (!ok) return { ok: false, status: 403, message: 'このアプリを使う権限がありません（ポータルのユーザー管理でチェックを付けてもらってください）' }
+  return { ok: true, user: { id: user.id, email: user.email } }
 }
 
 export function appUrl() {

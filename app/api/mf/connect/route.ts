@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomBytes } from 'node:crypto'
-import { requireAdmin } from '@/lib/supabaseAdmin'
+import { requireAppUser } from '@/lib/supabaseAdmin'
 import { buildAuthorizeUrl, mfConfigured, mfRedirectUri } from '@/lib/mf'
 
 export const dynamic = 'force-dynamic'
@@ -11,7 +11,7 @@ export const dynamic = 'force-dynamic'
  * state はランダム値を httpOnly Cookie に入れ、コールバックで照合する（CSRF 対策）。
  */
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin(req)
+  const auth = await requireAppUser(req, '/mf')
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status })
   if (!mfConfigured()) {
     return NextResponse.json(

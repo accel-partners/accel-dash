@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { supabase } from '@/lib/supabase'
+import { canUseApp, NO_ACCESS_TEXT, NO_ACCESS_HINT } from '@/lib/appAccess'
 import { signOut } from '@/lib/auth'
 import { DOC_KIND_LABEL, detectKind, normalizeUrl, type DocKind } from '@/lib/docKinds'
 import {
@@ -63,7 +64,6 @@ type Draft = {
 }
 const EMPTY_DRAFT: Draft = { title: '', description: '', url: '', division_id: '', purpose_id: '', pinned: false }
 
-const STAFF_DOMAIN = '@accel-partners.co.jp'
 
 /** 種類ごとのアイコンと色。Google 各サービスの色味に寄せて見分けやすくする */
 const KIND_STYLE: Record<DocKind, { icon: React.ReactNode; tone: string }> = {
@@ -109,9 +109,10 @@ export default function DocsPage() {
       }
       const mail = data.session.user.email ?? ''
       setEmail(mail)
-      const staff = mail.endsWith(STAFF_DOMAIN)
-      setIsStaff(staff)
-      if (staff) await fetchAll()
+      // 担当者、またはポータルで「資料置き場」にチェックが付いている人（lib/appAccess.ts）
+      const ok = await canUseApp('/docs', mail)
+      setIsStaff(ok)
+      if (ok) await fetchAll()
       setLoading(false)
     }
     void init()
@@ -322,7 +323,9 @@ export default function DocsPage() {
 
         {!isStaff ? (
           <div className="rounded-xl border border-border-soft bg-surface p-10 text-center text-black/70">
-            このページは社内メンバー専用です。
+            {NO_ACCESS_TEXT}
+            <br />
+            <span className="text-sm">{NO_ACCESS_HINT}</span>
           </div>
         ) : (
           <>

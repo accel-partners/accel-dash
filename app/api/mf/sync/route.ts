@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { requireAdmin } from '@/lib/supabaseAdmin'
+import { requireAppUser } from '@/lib/supabaseAdmin'
 import { runSync, defaultRange } from '@/lib/mfSync'
 
 export const dynamic = 'force-dynamic'
@@ -30,7 +30,7 @@ export async function GET(req: NextRequest) {
 
 /** 画面からの手動実行。{ from, to, invoices?, journals? } */
 export async function POST(req: NextRequest) {
-  const auth = await requireAdmin(req)
+  const auth = await requireAppUser(req, '/mf')
   if (!auth.ok) return fail(auth.message, auth.status)
   const body = (await req.json().catch(() => ({}))) as { from?: string; to?: string; invoices?: boolean; journals?: boolean }
   const r = defaultRange()
