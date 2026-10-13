@@ -81,10 +81,33 @@ export const ymLabel = (ym: string) => {
 }
 export const sessionTitle = (s: JSession) => `${ymLabel(s.ym)}　${s.venue && s.venue !== '未設定' ? s.venue : s.label || '会場未設定'}`
 export const isOnline = (s: JSession | undefined, e?: JEntry) => /zoom/i.test(s?.venue || '') || /zoom/i.test(e?.format || '')
-/** 状態：中止・検討中はそのまま。それ以外は開催月で 募集中／開催済み */
+/** 日程（例：11月14日（土）・15日（日）・28日（土）・29日（日）／11/14・15）の最後の日。読めなければ '' */
+export function lastDate(s: JSession): string {
+  const m0 = /^(\d{4})-(\d{2})$/.exec(s.ym || '')
+  if (!m0 || !s.dates) return ''
+  const y = Number(m0[1]), ym = Number(m0[2])
+  let month = 0, last = ''
+  const re = /(?:(\d{1,2})\s*[月/／]\s*)?(\d{1,2})\s*日?/g
+  for (const m of s.dates.normalize('NFKC').replace(/\d{4}\s*[年/.-]/g, '').matchAll(re)) {
+    if (m[1]) month = Number(m[1])
+    const d = Number(m[2]), mo = month || ym
+    if (!mo || mo > 12 || d < 1 || d > 31) continue
+    const yy = mo < ym - 6 ? y + 1 : y
+    const iso = `${yy}-${String(mo).padStart(2, '0')}-${String(d).padStart(2, '0')}`
+    if (iso > last) last = iso
+  }
+  return last
+}
+/** 開催が終わった回：日程の最後の日が今日より前。日程がなければ開催月が今月より前 */
+export function isOver(s: JSession): boolean {
+  const last = lastDate(s)
+  if (last) return last < todayIso()
+  return !!s.ym && s.ym < thisYm()
+}
+/** 状態：中止・検討中・締切はそのまま。それ以外は 募集中／開催済み（isOver） */
 export function sessionPhase(s: JSession): '募集中' | '開催済み' | '中止' | '検討中' | '締切' {
   if (s.status === '中止' || s.status === '検討中' || s.status === '締切') return s.status
-  return s.ym && s.ym < thisYm() ? '開催済み' : '募集中'
+  return isOver(s) ? '開催済み' : '募集中'
 }
 export const isActiveEntry = (e: JEntry) => e.status !== 'キャンセル'
 export const normEmail = (s: string) => (s || '').trim().toLowerCase()

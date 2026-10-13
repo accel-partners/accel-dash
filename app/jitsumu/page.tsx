@@ -8,7 +8,7 @@ import { signOut } from '@/lib/auth'
 import {
   CHECKS, MINOR_CHECKS, VENUES, GROUPS, POINTS, PASS_YEARS,
   type JSession, type JPerson, type JEntry,
-  thisYm, todayIso, ymLabel, sessionTitle, sessionPhase, isActiveEntry, isOnline, normEmail, nameKey, checkShort, fetchAll,
+  thisYm, todayIso, ymLabel, sessionTitle, sessionPhase, isOver, isActiveEntry, isOnline, normEmail, nameKey, checkShort, fetchAll,
 } from '@/lib/jitsumu'
 import { LogOut, Plus, Search, X, ArrowLeft, Users, CalendarDays, BarChart3, Pencil, ChevronRight, UserPlus, Undo2 } from 'lucide-react'
 
@@ -381,11 +381,10 @@ function SessionList({ sessions, entriesBySession, onOpen, onNew }: {
   onNew: () => void
 }) {
   const years = useMemo(() => [...new Set(sessions.map((s) => s.ym.slice(0, 4)).filter(Boolean))].sort().reverse(), [sessions])
-  // 「最近とこれからの回」＝ 2か月前の回から先（開催後のチェック中の回も入れる）
-  const since = (() => { const [y, m] = thisYm().split('-').map(Number); const d = new Date(Date.UTC(y, m - 3, 1)); return d.toISOString().slice(0, 7) })()
+  // 「これからの回」＝ まだ開催が終わっていない回（終わった回は年のタブで見る）
   const [year, setYear] = useState<string>('upcoming')
   const shown = sessions
-    .filter((s) => (year === 'upcoming' ? s.ym >= since && s.status !== '中止' && s.status !== '検討中' : s.ym.startsWith(year)))
+    .filter((s) => (year === 'upcoming' ? !isOver(s) && s.status !== '中止' && s.status !== '検討中' : s.ym.startsWith(year)))
     .sort((a, b) => (year === 'upcoming' ? a.ym.localeCompare(b.ym) : b.ym.localeCompare(a.ym)) || venueOrder(a) - venueOrder(b) || a.sort - b.sort)
   const byYm = new Map<string, JSession[]>()
   for (const s of shown) byYm.set(s.ym, [...(byYm.get(s.ym) ?? []), s])
@@ -393,7 +392,7 @@ function SessionList({ sessions, entriesBySession, onOpen, onNew }: {
   return (
     <>
       <div className="mb-5 flex flex-wrap items-center gap-2">
-        <button onClick={() => setYear('upcoming')} className={chip(year === 'upcoming')}>最近とこれからの回</button>
+        <button onClick={() => setYear('upcoming')} className={chip(year === 'upcoming')}>これからの回</button>
         {years.map((y) => <button key={y} onClick={() => setYear(y)} className={chip(year === y)}>{y}年</button>)}
         <span className="flex-1" />
         <button onClick={onNew} className="flex min-h-0 items-center gap-1.5 rounded-lg border-2 border-border-soft bg-surface px-3.5 py-2 text-sm font-semibold text-black hover:border-accel-secondary">
