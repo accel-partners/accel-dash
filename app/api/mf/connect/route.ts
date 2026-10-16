@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { blockInTestDeploy } from '@/lib/testModeServer'
 import { randomBytes } from 'node:crypto'
 import { requireAppUser } from '@/lib/supabaseAdmin'
 import { buildAuthorizeUrl, mfConfigured, mfRedirectUri } from '@/lib/mf'
@@ -11,6 +12,8 @@ export const dynamic = 'force-dynamic'
  * state はランダム値を httpOnly Cookie に入れ、コールバックで照合する（CSRF 対策）。
  */
 export async function GET(req: NextRequest) {
+  const blocked = blockInTestDeploy()
+  if (blocked) return blocked
   const auth = await requireAppUser(req, '/mf')
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status })
   if (!mfConfigured()) {

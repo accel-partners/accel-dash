@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { blockInTestDeploy } from '@/lib/testModeServer'
 import { requireAdmin, supabaseAdmin } from '@/lib/supabaseAdmin'
 import { chatworkRooms, postChatwork } from '@/lib/receivables'
 
@@ -24,6 +25,8 @@ export async function OPTIONS(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   const h = cors(req)
+  const blocked = blockInTestDeploy(h)
+  if (blocked) return blocked
   const auth = await requireAdmin(req)
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status, headers: h })
   if (!process.env.CHATWORK_API_TOKEN) return NextResponse.json({ error: 'Vercel に CHATWORK_API_TOKEN が登録されていないか、登録後に再デプロイされていません' }, { status: 400, headers: h })

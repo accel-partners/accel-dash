@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { blockInTestDeploy } from '@/lib/testModeServer'
 import { supabaseAdmin, requireAdmin } from '@/lib/supabaseAdmin'
 
 export const dynamic = 'force-dynamic'
@@ -20,6 +21,8 @@ async function ensureBucket() {
 }
 
 export async function POST(req: NextRequest) {
+  const blocked = blockInTestDeploy()
+  if (blocked) return blocked
   const auth = await requireAdmin(req)
   if (!auth.ok) return fail(auth.message, auth.status)
   const me = auth.user

@@ -7,6 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { canUseApp, NO_ACCESS_TEXT, NO_ACCESS_HINT } from '@/lib/appAccess'
 import { signOut } from '@/lib/auth'
 import { DOC_KIND_LABEL, detectKind, normalizeUrl, type DocKind } from '@/lib/docKinds'
+import { IS_TEST_DEPLOY, TEST_DISABLED_MESSAGE } from '@/lib/testMode'
 import {
   LogOut,
   Plus,
@@ -181,6 +182,10 @@ export default function DocsPage() {
   }
 
   async function saveDraft() {
+    if (IS_TEST_DEPLOY) {
+      setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
+      return
+    }
     if (!draft) return
     const url = normalizeUrl(draft.url)
     if (!url || !draft.title.trim()) {
@@ -211,6 +216,10 @@ export default function DocsPage() {
   }
 
   async function togglePin(l: DocLink) {
+    if (IS_TEST_DEPLOY) {
+      setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
+      return
+    }
     const { error } = await supabase.from('doc_links').update({ pinned: !l.pinned }).eq('id', l.id)
     if (error) {
       setNotice({ kind: 'ng', text: `更新に失敗しました：${error.message}` })
@@ -220,6 +229,10 @@ export default function DocsPage() {
   }
 
   async function removeLink(l: DocLink) {
+    if (IS_TEST_DEPLOY) {
+      setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
+      return
+    }
     if (!confirm(`「${l.title}」をこの一覧から削除しますか？\n（Google ドライブ上のファイルは消えません）`)) return
     const { error } = await supabase.from('doc_links').delete().eq('id', l.id)
     if (error) {
@@ -231,6 +244,10 @@ export default function DocsPage() {
 
   // ---------- カテゴリー管理
   async function addCategory(table: 'doc_divisions' | 'doc_purposes', name: string) {
+    if (IS_TEST_DEPLOY) {
+      setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
+      return
+    }
     const list = table === 'doc_divisions' ? divisions : purposes
     const sort_order = (list.at(-1)?.sort_order ?? 0) + 1
     const { error } = await supabase.from(table).insert({ name: name.trim(), sort_order })
@@ -241,11 +258,19 @@ export default function DocsPage() {
     await fetchAll()
   }
   async function renameCategory(table: 'doc_divisions' | 'doc_purposes', id: string, name: string) {
+    if (IS_TEST_DEPLOY) {
+      setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
+      return
+    }
     const { error } = await supabase.from(table).update({ name: name.trim() }).eq('id', id)
     if (error) setNotice({ kind: 'ng', text: `変更に失敗しました：${error.message}` })
     await fetchAll()
   }
   async function moveCategory(table: 'doc_divisions' | 'doc_purposes', id: string, dir: -1 | 1) {
+    if (IS_TEST_DEPLOY) {
+      setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
+      return
+    }
     const list = table === 'doc_divisions' ? divisions : purposes
     const i = list.findIndex((x) => x.id === id)
     const j = i + dir
@@ -260,6 +285,10 @@ export default function DocsPage() {
     await fetchAll()
   }
   async function removeCategory(table: 'doc_divisions' | 'doc_purposes', c: { id: string; name: string }) {
+    if (IS_TEST_DEPLOY) {
+      setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
+      return
+    }
     const count = links.filter((l) => (table === 'doc_divisions' ? l.division_id : l.purpose_id) === c.id).length
     const msg = count > 0
       ? `「${c.name}」を削除しますか？\n${count} 件の資料が属しています。資料は消えず、未分類になります。`

@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { blockInTestDeploy } from '@/lib/testModeServer'
 import { exchangeCode } from '@/lib/mf'
 import { appUrl } from '@/lib/supabaseAdmin'
 
@@ -10,6 +11,8 @@ export const dynamic = 'force-dynamic'
  * 結果はクエリ（?connected=1 または ?error=...）で画面に伝える。
  */
 export async function GET(req: NextRequest) {
+  const blocked = blockInTestDeploy()
+  if (blocked) return blocked
   const url = new URL(req.url)
   const code = url.searchParams.get('code') || ''
   const state = url.searchParams.get('state') || ''
