@@ -65,3 +65,14 @@ Vercel のプレビュー版ではテスト版の機能停止が効かないた�
 ## 元に戻す
 
 GitHub で `cloudflare-test` ブランチを削除し、Cloudflare の Worker `accel-dash-test` を削除する。
+
+## 実際の設定メモ（2026-10-16）
+
+- リポジトリは GitHub Organization に移した：`accel-partners/accel-dash`（旧 `ninomiyalisting-glitch/accel-dash` は自動転送）
+- Cloudflare の GitHub 連携は accel-partners に許可（accel-dash のみ）
+- 作成時の簡易画面にはブランチの欄がなく、最初のビルドは main で動いて失敗する（main には cf:build がないため。正常）
+- Settings → Builds の「Production branch」を `cloudflare-test` に変更
+- Deploy command は既定の `npx wrangler deploy` のままで動く
+- ビルド時の変数：Settings → Builds の「Variables and secrets」
+- 動くときの変数：Settings の「Runtime variables and secrets」（秘密鍵は Secret。Supabase の新形式の secret key `cloudflare_test` を作って使用）
+- 新しくビルドしたいときは cloudflare-test に push する（Retry build は失敗したときのブランチ・コミットのまま作り直す）
