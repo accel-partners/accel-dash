@@ -15,9 +15,13 @@ export const MF_TOKEN_URL = 'https://api.biz.moneyforward.com/token'
 export const MF_INVOICE_BASE = 'https://invoice.moneyforward.com/api/v3'
 export const MF_ACCOUNTING_BASE = 'https://api-accounting.moneyforward.com/api/v3'
 
-/** 使うスコープ。読み取りだけ。増やすときは再認可が必要 */
+/**
+ * 使うスコープ。増やすときは再認可が必要（アクセルダッシュの「マネーフォワード連携」で接続し直す）
+ * 請求書の書き込み（data.write）は、基幹システムの「請求書」で人がボタンを押したときに、請求書を作るためだけに使う
+ */
 export const MF_SCOPES = [
   'mfc/invoice/data.read',
+  'mfc/invoice/data.write',
   'mfc/accounting/journal.read',
   'mfc/accounting/offices.read',
   'mfc/accounting/accounts.read',
@@ -172,4 +176,51 @@ export async function mfGet<T = unknown>(url: string, attempt = 0): Promise<T> {
 
 export function sleep(ms: number) {
   return new Promise((r) => setTimeout(r, ms))
+}
+
+/** いまの接続に、そのスコープが付いているか（付いていなければ接続し直しが要る） */
+export async function hasScope(scope: string) {
+  const c = await getConnection()
+  return !!c && String(c.scope || '').split(/\s+/).includes(scope)
+}
+
+/**
+ * POST・PATCH・PUT を投げて JSON を返す。401 なら 1 回だけトークンを更新して再試行。
+ * 書き込みは二重に作らないよう、429・5xx でも自動で再試行しない（呼ぶ側で状態を確かめる）
+ */
+export async function mfSend<T = unknown>(method: 'POST' | 'PATCH' | 'PUT', url: string, body: unknown, attempt = 0): Promise<T> {
+  const token = await validAccessToken(attempt === 1)
+  const res = await fetch(url, {
+    method,
+    headers: { Authorization: `Bearer ${token}`, Accept: 'application/json', 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+    cache: 'no-store',
+  })
+  if (res.status === 401 && attempt === 0) return mfSend<T>(method, url, body, 1)
+  const text = await res.text()
+  if (!res.ok) {
+    const hint = res.status === 403 ? '（書き込みの権限がありません。アクセルダッシュの「マネーフォワード連携」で接続し直してください）' : ''
+    throw new Error(`MF API エラー（${res.status} ${url.replace(/\?.*$/, '')}）${hint}：${text.slice(0, 300)}`)
+  }
+  return (text ? JSON.parse(text) : {}) as T
+}
+
+/** PDF などのファイルを取る（トークン付き）。JSON で URL が返ってきたら、その URL をもう一度取る */
+export async function mfFile(url: string, attempt = 0): Promise<{ data: Buffer; type: string }> {
+  const token = await validAccessToken(attempt === 1)
+  const res = await fetch(url, { headers: { Authorization: `Bearer ${token}`, Accept: 'application/pdf, application/json' }, cache: 'no-store', redirect: 'follow' })
+  if (res.status === 401 && attempt === 0) return mfFile(url, 1)
+  if (RETRY_STATUSES.has(res.status) && attempt < 4) {
+    await sleep(1500 * (attempt + 1))
+    return mfFile(url, attempt + 1)
+  }
+  if (!res.ok) throw new Error(`MF の PDF を取れませんでした（${res.status}）`)
+  const type = res.headers.get('content-type') || ''
+  if (type.includes('json')) {
+    const j = (await res.json()) as { pdf_url?: string; url?: string }
+    const next = j.pdf_url || j.url
+    if (!next || attempt > 2) throw new Error('MF の PDF の場所が分かりませんでした')
+    return mfFile(next, attempt + 2)
+  }
+  return { data: Buffer.from(await res.arrayBuffer()), type: type || 'application/pdf' }
 }
