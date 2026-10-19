@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { blockInTestDeploy } from '@/lib/testModeServer'
 import { requireAdmin, supabaseAdmin } from '@/lib/supabaseAdmin'
 import { chatworkRooms, postChatwork } from '@/lib/receivables'
+import { testChatworkRoom, TEST_CHATWORK_TAG } from '@/lib/testChatwork'
 
 export const dynamic = 'force-dynamic'
 
@@ -25,16 +26,18 @@ export async function OPTIONS(req: NextRequest) {
 }
 export async function POST(req: NextRequest) {
   const h = cors(req)
-  const blocked = blockInTestDeploy(h)
+  // テスト版は CHATWORK_TEST_ROOM_ID のルームにだけ送る（未設定なら今までどおり止める）
+  const testRoom = testChatworkRoom()
+  const blocked = testRoom ? null : blockInTestDeploy(h)
   if (blocked) return blocked
   const auth = await requireAdmin(req)
   if (!auth.ok) return NextResponse.json({ error: auth.message }, { status: auth.status, headers: h })
   if (!process.env.CHATWORK_API_TOKEN) return NextResponse.json({ error: 'Vercel に CHATWORK_API_TOKEN が登録されていないか、登録後に再デプロイされていません' }, { status: 400, headers: h })
-  const { data } = await supabaseAdmin.from('crm_docs').select('data').eq('collection', 'meta').eq('id', 'receivables').maybeSingle()
-  const rooms = chatworkRooms((data?.data as { chatwork?: { roomId?: string; extraRoomIds?: string[] } } | undefined)?.chatwork)
+  const { data } = testRoom ? { data: null } : await supabaseAdmin.from('crm_docs').select('data').eq('collection', 'meta').eq('id', 'receivables').maybeSingle()
+  const rooms = testRoom ? [testRoom] : chatworkRooms((data?.data as { chatwork?: { roomId?: string; extraRoomIds?: string[] } } | undefined)?.chatwork)
   if (!rooms.length) return NextResponse.json({ error: '未入金管理の設定にルームIDが入っていません' }, { status: 400, headers: h })
   const now = new Date(Date.now() + 9 * 3600 * 1000).toISOString().slice(0, 16).replace('T', ' ')
-  const body = `[info][title]【アクセルダッシュ】テスト送信[/title]アクセルダッシュからの通知のテストです（${now}・${auth.user.email}）。\nこのチャットに、入金のお知らせと毎月の未入金リマインドが届きます。[/info]`
+  const body = `${testRoom ? `${TEST_CHATWORK_TAG}\n` : ''}[info][title]【アクセルダッシュ】テスト送信[/title]アクセルダッシュからの通知のテストです（${now}・${auth.user.email}）。\nこのチャットに、入金のお知らせと毎月の未入金リマインドが届きます。[/info]`
   const sent: string[] = []
   const failed: string[] = []
   for (const roomId of rooms) {
