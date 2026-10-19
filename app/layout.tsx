@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { IS_TEST_DEPLOY } from "@/lib/testMode";
+import { IS_TEST_DEPLOY, TEST_ALLOW_DOCS_AND_IMAGES } from "@/lib/testMode";
 
 export const metadata: Metadata = {
   title: "アクセルダッシュ",
@@ -31,7 +31,9 @@ export default function RootLayout({
               textAlign: "center",
             }}
           >
-            Cloudflare テスト版です。MF連携・未入金通知・資料置き場の登録や削除は使えません。データは本番と同じなので、試しの登録は『テスト』と分かる名前で。
+            {TEST_ALLOW_DOCS_AND_IMAGES
+              ? "Cloudflare テスト版です。MF連携・未入金通知は使えません。資料置き場と画像は試せますが、データは本番と同じです。試しの登録は『テスト』と分かる名前にして、終わったら消してください。"
+              : "Cloudflare テスト版です。MF連携・未入金通知・資料置き場の登録や削除は使えません。データは本番と同じなので、試しの登録は『テスト』と分かる名前で。"}
           </div>
         )}
         {children}

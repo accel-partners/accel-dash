@@ -7,7 +7,7 @@ import { supabase } from '@/lib/supabase'
 import { canUseApp, NO_ACCESS_TEXT, NO_ACCESS_HINT } from '@/lib/appAccess'
 import { signOut } from '@/lib/auth'
 import { DOC_KIND_LABEL, detectKind, normalizeUrl, type DocKind } from '@/lib/docKinds'
-import { IS_TEST_DEPLOY, TEST_DISABLED_MESSAGE } from '@/lib/testMode'
+import { IS_TEST_DEPLOY, TEST_ALLOW_DOCS_AND_IMAGES, TEST_DISABLED_MESSAGE } from '@/lib/testMode'
 import {
   LogOut,
   Plus,
@@ -182,7 +182,7 @@ export default function DocsPage() {
   }
 
   async function saveDraft() {
-    if (IS_TEST_DEPLOY) {
+    if (IS_TEST_DEPLOY && !TEST_ALLOW_DOCS_AND_IMAGES) {
       setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
       return
     }
@@ -216,7 +216,7 @@ export default function DocsPage() {
   }
 
   async function togglePin(l: DocLink) {
-    if (IS_TEST_DEPLOY) {
+    if (IS_TEST_DEPLOY && !TEST_ALLOW_DOCS_AND_IMAGES) {
       setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
       return
     }
@@ -229,7 +229,7 @@ export default function DocsPage() {
   }
 
   async function removeLink(l: DocLink) {
-    if (IS_TEST_DEPLOY) {
+    if (IS_TEST_DEPLOY && !TEST_ALLOW_DOCS_AND_IMAGES) {
       setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
       return
     }
@@ -244,7 +244,7 @@ export default function DocsPage() {
 
   // ---------- カテゴリー管理
   async function addCategory(table: 'doc_divisions' | 'doc_purposes', name: string) {
-    if (IS_TEST_DEPLOY) {
+    if (IS_TEST_DEPLOY && !TEST_ALLOW_DOCS_AND_IMAGES) {
       setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
       return
     }
@@ -258,7 +258,7 @@ export default function DocsPage() {
     await fetchAll()
   }
   async function renameCategory(table: 'doc_divisions' | 'doc_purposes', id: string, name: string) {
-    if (IS_TEST_DEPLOY) {
+    if (IS_TEST_DEPLOY && !TEST_ALLOW_DOCS_AND_IMAGES) {
       setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
       return
     }
@@ -267,7 +267,7 @@ export default function DocsPage() {
     await fetchAll()
   }
   async function moveCategory(table: 'doc_divisions' | 'doc_purposes', id: string, dir: -1 | 1) {
-    if (IS_TEST_DEPLOY) {
+    if (IS_TEST_DEPLOY && !TEST_ALLOW_DOCS_AND_IMAGES) {
       setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
       return
     }
@@ -285,7 +285,7 @@ export default function DocsPage() {
     await fetchAll()
   }
   async function removeCategory(table: 'doc_divisions' | 'doc_purposes', c: { id: string; name: string }) {
-    if (IS_TEST_DEPLOY) {
+    if (IS_TEST_DEPLOY && !TEST_ALLOW_DOCS_AND_IMAGES) {
       setNotice({ kind: 'ng', text: TEST_DISABLED_MESSAGE })
       return
     }
