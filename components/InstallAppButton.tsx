@@ -3,7 +3,7 @@
 /**
  * 「アプリとして入れる」ボタン（ポータルのトップだけに出す）
  * - Chrome / Edge：ブラウザのインストール画面を開く（Dock・タスクバーに置けるようになる）
- * - Safari：サブドメインのアプリへ移ると Safari に戻ってしまうため、Chrome をすすめる
+ * - Chrome の準備前（開いて30秒以内など）や Safari では、押すと入れ方の説明を出す
  * - すでにアプリとして開いているとき、「閉じる」を押したあとは出さない
  */
 import { useEffect, useState } from 'react'
@@ -19,6 +19,7 @@ export default function InstallAppButton() {
   const [promptEvent, setPromptEvent] = useState<InstallPromptEvent | null>(null)
   const [safari, setSafari] = useState(false)
   const [hidden, setHidden] = useState(true)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     const standalone =
@@ -42,14 +43,15 @@ export default function InstallAppButton() {
     }
   }, [])
 
-  if (pathname !== '/' || hidden || (!promptEvent && !safari)) return null
+  if (pathname !== '/' || hidden) return null
 
   const dismiss = () => {
     try { localStorage.setItem(DISMISS_KEY, '1') } catch {}
     setHidden(true)
   }
   const install = async () => {
-    if (!promptEvent) return
+    // Chrome がまだ準備できていない（開いて間もない等）ときは、メニューからの入れ方を出す
+    if (!promptEvent) { setShowHelp(v => !v); return }
     await promptEvent.prompt()
     await promptEvent.userChoice.catch(() => null)
     setPromptEvent(null)
@@ -57,16 +59,19 @@ export default function InstallAppButton() {
 
   return (
     <div className="fixed bottom-4 right-4 z-50 flex max-w-sm items-start gap-3 rounded-xl border-2 border-border-soft bg-surface p-3 pl-4 text-sm shadow-lg">
-      {promptEvent ? (
+      <div>
         <button onClick={install} className="flex items-center gap-2 font-bold text-accel-primary hover:text-accel-hover">
           <Download size={16} />
           アプリとして入れる（Dock に置けます）
         </button>
-      ) : (
-        <p className="leading-relaxed text-black/70">
-          Chrome で開くと、アクセルダッシュを Dock に置けるアプリとして入れられます（Safari だと各アプリへ移るたびにブラウザに戻ってしまいます）。
-        </p>
-      )}
+        {showHelp && (
+          <p className="mt-2 leading-relaxed text-black/70">
+            {safari
+              ? 'Safari だと各アプリへ移るたびにブラウザに戻ってしまうため、Chrome で開いて入れてください。'
+              : '右上の「⋮」→「キャスト、保存、共有」→「ページをアプリとしてインストール」を選んでください（アドレスバー右端のインストールのマークからも入れられます）。入れたあと、Dock のアイコンを右クリック →「オプション」→「Dockに追加」で固定できます。'}
+          </p>
+        )}
+      </div>
       <button onClick={dismiss} aria-label="閉じる" className="flex-shrink-0 rounded p-0.5 text-black/40 hover:bg-surface-muted hover:text-black">
         <X size={14} />
       </button>
