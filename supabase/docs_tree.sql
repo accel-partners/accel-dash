@@ -19,6 +19,8 @@ create index if not exists idx_doc_categories_parent on public.doc_categories (p
 
 alter table public.doc_links add column if not exists category_id uuid references public.doc_categories(id) on delete set null;
 create index if not exists idx_doc_links_category on public.doc_links (category_id);
+-- リンクの並び順（同じカテゴリーの中。画面の上下ボタンで決める。空は名前順）
+alter table public.doc_links add column if not exists sort_order integer;
 
 alter table public.doc_categories enable row level security;
 drop policy if exists doc_categories_access on public.doc_categories;

@@ -31,6 +31,7 @@ interface DocLink {
   kind: DocKind
   category_id: string | null
   pinned: boolean
+  sort_order?: number | null
   updated_at: string
 }
 type Draft = { id?: string; title: string; description: string; url: string; category_id: string; pinned: boolean }
@@ -82,7 +83,7 @@ export default function DocsPage() {
   async function fetchAll() {
     const [c, l] = await Promise.all([
       supabase.from('doc_categories').select('id, parent_id, name, description, sort_order'),
-      supabase.from('doc_links').select('id, title, description, url, kind, category_id, pinned, updated_at').order('pinned', { ascending: false }).order('title'),
+      supabase.from('doc_links').select('*').order('title'),
     ])
     const err = c.error ?? l.error
     if (err) {
@@ -138,6 +139,19 @@ export default function DocsPage() {
     if (error) { setNotice({ kind: 'ng', text: `更新に失敗しました：${error.message}` }); return }
     setLinks((prev) => prev.map((x) => (x.id === l.id ? { ...x, pinned: !l.pinned } : x)))
   }
+  /** 同じカテゴリーの中で 1 つ上・下へ（並び順を振り直して入れ替える） */
+  async function moveLink(l: DocLink, dir: -1 | 1) {
+    const list = sortLinks(links.filter((x) => x.category_id === l.category_id))
+    const i = list.findIndex((x) => x.id === l.id), j = i + dir
+    if (i < 0 || j < 0 || j >= list.length) return
+    const order = list.map((x) => x.id)
+    ;[order[i], order[j]] = [order[j], order[i]]
+    const res = await Promise.all(order.map((id, k) => supabase.from('doc_links').update({ sort_order: k + 1 }).eq('id', id)))
+    const err = res.find((r) => r.error)?.error
+    if (err) { setNotice({ kind: 'ng', text: /sort_order/.test(err.message) ? 'リンクの並び順を保存する列がまだありません。Supabase（共有）の SQL Editor で supabase/docs_tree.sql を実行し直してください' : `並べ替えに失敗しました：${err.message}` }); return }
+    setLinks((prev) => prev.map((x) => { const k = order.indexOf(x.id); return k >= 0 ? { ...x, sort_order: k + 1 } : x }))
+  }
+
   async function removeLink(l: DocLink) {
     if (!confirm(`「${l.title}」をこの一覧から削除しますか？\n（リンク先のファイルは消えません）`)) return
     const { error } = await supabase.from('doc_links').delete().eq('id', l.id)
@@ -188,13 +202,44 @@ export default function DocsPage() {
   const cur = sel !== ALL && sel !== NONE ? catById.get(sel) ?? null : null
   const topLevel = tree.children.get('') ?? []
 
-  const linkList = (list: DocLink[], showPath = false) => (
-    <ul className="divide-y divide-border-soft rounded-xl border border-border-soft bg-surface">
-      {[...list].sort((a, b) => Number(b.pinned) - Number(a.pinned) || a.title.localeCompare(b.title, 'ja')).map((l) => (
-        <LinkRow key={l.id} l={l} path={showPath ? pathText(l.category_id) : null} onEdit={openEdit} onPin={togglePin} onRemove={removeLink} />
+  /** movable：同じカテゴリーの中の並び（上下ボタンを出す）。検索結果・重要の一覧では出さない */
+  const linkList = (list: DocLink[], showPath = false, movable = !showPath, bare = false) => (
+    <ul className={bare ? 'divide-y divide-border-soft' : 'divide-y divide-border-soft rounded-xl border border-border-soft bg-surface'}>
+      {(movable ? sortLinks(list) : [...list].sort((a, b) => a.title.localeCompare(b.title, 'ja'))).map((l) => (
+        <LinkRow key={l.id} l={l} path={showPath ? pathText(l.category_id) : null} onEdit={openEdit} onPin={togglePin} onRemove={removeLink} onMove={movable ? moveLink : undefined} />
       ))}
     </ul>
   )
+  /** 一覧（すべて）の大カテゴリーのブロック：直下のリンク → 小カテゴリーごとの見出しとリンク */
+  const block = (c: DocCategory, i: number, n: number) => {
+    const own = links.filter((l) => l.category_id === c.id)
+    const subs = tree.flat.filter((x) => descendants(c.id, tree.children).includes(x.c.id))
+    return (
+      <section key={c.id} className="flex flex-col overflow-hidden rounded-xl border border-border-soft bg-surface">
+        <div className="flex items-center gap-1 border-b border-border-soft bg-accel-lightest/60 px-4 py-2.5">
+          <button onClick={() => select(c.id)} className="min-w-0 flex-1 truncate text-left font-bold text-black hover:underline">{c.name}<span className="ml-2 text-xs font-normal text-black/40">{countIn.get(c.id) ?? 0} 件</span></button>
+          <IconBtn title="ブロックを上へ" onClick={() => moveCat(c, -1)} disabled={i === 0}><ChevronUp size={14} /></IconBtn>
+          <IconBtn title="ブロックを下へ" onClick={() => moveCat(c, 1)} disabled={i === n - 1}><ChevronDown size={14} /></IconBtn>
+        </div>
+        {c.description && <p className="whitespace-pre-wrap px-4 pt-2 text-xs leading-relaxed text-black/60">{c.description}</p>}
+        {own.length > 0 && linkList(own, false, true, true)}
+        {subs.map(({ c: sc, depth }) => {
+          const list = links.filter((l) => l.category_id === sc.id)
+          if (!list.length) return null
+          return (
+            <div key={sc.id} className="border-t border-border-soft">
+              <button onClick={() => select(sc.id)} className="w-full bg-surface-muted/60 px-4 py-1.5 text-left text-xs font-bold text-black/70 hover:underline" style={{ paddingLeft: 16 + (depth - 1) * 12 }}>
+                {pathOf(sc.id, catById).slice(1).map((x) => x.name).join(' › ')}
+              </button>
+              {linkList(list, false, true, true)}
+            </div>
+          )
+        })}
+        {(countIn.get(c.id) ?? 0) === 0 && <p className="px-4 py-4 text-xs text-black/40">まだリンクがありません</p>}
+        <button onClick={() => openNew(c.id)} className="mt-auto flex items-center gap-1 border-t border-border-soft px-4 py-2 text-left text-xs text-black/50 hover:bg-surface-muted hover:text-black"><Plus size={12} />リンクを追加</button>
+      </section>
+    )
+  }
   /** カテゴリーの中身：説明 → 直下のリンク → 小カテゴリーごと（見出しの深さで段を表す） */
   const section = (c: DocCategory, depth: number): React.ReactNode => {
     const own = links.filter((l) => l.category_id === c.id)
@@ -317,13 +362,9 @@ export default function DocsPage() {
                         {linkList(links.filter((l) => l.pinned), true)}
                       </section>
                     )}
-                    {topLevel.map((c) => (
-                      <section key={c.id} className="mb-8">
-                        <button onClick={() => select(c.id)} className="mb-1 text-left text-lg font-bold text-black hover:underline">{c.name}<span className="ml-2 text-xs font-normal text-black/40">{countIn.get(c.id) ?? 0} 件</span></button>
-                        {c.description && <p className="mb-2 whitespace-pre-wrap text-xs leading-relaxed text-black/60">{c.description}</p>}
-                        {section(c, 0)}
-                      </section>
-                    ))}
+                    <div className="mb-8 grid items-start gap-4 lg:grid-cols-2">
+                      {topLevel.map((c, i) => block(c, i, topLevel.length))}
+                    </div>
                     {uncategorized.length > 0 && (
                       <section className="mb-8"><h2 className="mb-2 text-lg font-bold text-black">未分類</h2>{linkList(uncategorized)}</section>
                     )}
@@ -404,7 +445,11 @@ function TreeNode({ c, depth, childrenMap, open, sel, countIn, onToggle, onSelec
   )
 }
 
-function LinkRow({ l, path, onEdit, onPin, onRemove }: { l: DocLink; path: string | null; onEdit: (l: DocLink) => void; onPin: (l: DocLink) => void; onRemove: (l: DocLink) => void }) {
+function sortLinks(list: DocLink[]) {
+  return [...list].sort((a, b) => (a.sort_order ?? 1e9) - (b.sort_order ?? 1e9) || a.title.localeCompare(b.title, 'ja'))
+}
+
+function LinkRow({ l, path, onEdit, onPin, onRemove, onMove }: { l: DocLink; path: string | null; onEdit: (l: DocLink) => void; onPin: (l: DocLink) => void; onRemove: (l: DocLink) => void; onMove?: (l: DocLink, dir: -1 | 1) => void }) {
   const st = KIND_STYLE[l.kind] ?? KIND_STYLE.link
   return (
     <li className="group flex items-start gap-3 px-4 py-3">
@@ -416,7 +461,9 @@ function LinkRow({ l, path, onEdit, onPin, onRemove }: { l: DocLink; path: strin
         {l.description && <p className="mt-0.5 whitespace-pre-wrap text-xs leading-relaxed text-black/60">{l.description}</p>}
         <p className="mt-1 text-[11px] text-black/40">{path ? `${path}・` : ''}{DOC_KIND_LABEL[l.kind]}</p>
       </a>
-      <div className="flex shrink-0 items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100">
+      <div className="flex shrink-0 items-center gap-0.5 sm:hidden sm:group-hover:flex">
+        {onMove && <IconBtn title="上へ" onClick={() => onMove(l, -1)}><ChevronUp size={14} /></IconBtn>}
+        {onMove && <IconBtn title="下へ" onClick={() => onMove(l, 1)}><ChevronDown size={14} /></IconBtn>}
         <IconBtn title={l.pinned ? '重要を外す' : '重要にする'} onClick={() => onPin(l)}>{l.pinned ? <PinOff size={14} /> : <Pin size={14} />}</IconBtn>
         <IconBtn title="編集" onClick={() => onEdit(l)}><Pencil size={14} /></IconBtn>
         <IconBtn title="削除" danger onClick={() => onRemove(l)}><Trash2 size={14} /></IconBtn>
@@ -456,10 +503,10 @@ function ModalButtons({ saving, label, onSave, onCancel }: { saving: boolean; la
   )
 }
 
-function IconBtn({ title, onClick, danger, children }: { title: string; onClick: () => void; danger?: boolean; children: React.ReactNode }) {
+function IconBtn({ title, onClick, danger, disabled, children }: { title: string; onClick: () => void; danger?: boolean; disabled?: boolean; children: React.ReactNode }) {
   return (
-    <button type="button" title={title} aria-label={title} onClick={onClick}
-      className={`flex h-8 w-8 items-center justify-center rounded-lg text-black/50 transition-colors ${danger ? 'hover:bg-red-50 hover:text-red-600' : 'hover:bg-accel-lightest hover:text-accel-text'}`}>
+    <button type="button" title={title} aria-label={title} onClick={onClick} disabled={disabled}
+      className={`flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-black/50 transition-colors disabled:opacity-25 ${danger ? 'hover:bg-red-50 hover:text-red-600' : 'hover:bg-accel-lightest hover:text-accel-text'}`}>
       {children}
     </button>
   )
