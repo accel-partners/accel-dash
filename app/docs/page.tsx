@@ -362,7 +362,7 @@ export default function DocsPage() {
                         {linkList(links.filter((l) => l.pinned), true)}
                       </section>
                     )}
-                    <div className="mb-8 grid items-start gap-4 lg:grid-cols-2">
+                    <div className="mb-8 flex flex-col gap-4">
                       {topLevel.map((c, i) => block(c, i, topLevel.length))}
                     </div>
                     {uncategorized.length > 0 && (
