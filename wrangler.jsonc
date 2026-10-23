@@ -1,4 +1,4 @@
-// Cloudflare テスト版（accel-dash-test）の設定。本番（Vercel）には影響しない。
+// Cloudflare 版 accel-dash の設定（Worker 名は accel-dash-test のまま）。
 // 定期実行（Cron）は書かない：MF 同期・未入金通知は Vercel 側だけで動かす。
 {
   "$schema": "node_modules/wrangler/config-schema.json",
@@ -14,9 +14,6 @@
   },
   // Cloudflare の画面で入れた変数（NEXT_PUBLIC_SUPABASE_URL など）をデプロイのたびに消さない
   "keep_vars": true,
-  "vars": {
-    "NEXT_PUBLIC_DEPLOY_TARGET": "cloudflare-test"
-  },
   "observability": {
     "enabled": true
   }

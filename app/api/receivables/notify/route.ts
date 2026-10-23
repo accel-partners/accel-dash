@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { blockInTestDeploy } from '@/lib/testModeServer'
 import { notifyReceivables } from '@/lib/receivables'
 
 export const dynamic = 'force-dynamic'
@@ -12,8 +11,6 @@ export const dynamic = 'force-dynamic'
  * ルームが複数あるときは、ルームごとに送れたかを記録しているので、送れたルームには二度送らず、送れなかったルームにだけ送り直す。
  */
 export async function GET(req: NextRequest) {
-  const blocked = blockInTestDeploy()
-  if (blocked) return blocked
   const secret = process.env.CRON_SECRET || ''
   const header = req.headers.get('Authorization') || ''
   if (!secret || header !== `Bearer ${secret}`) return NextResponse.json({ error: '認証できません' }, { status: 401 })

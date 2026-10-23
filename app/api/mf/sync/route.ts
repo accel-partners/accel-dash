@@ -1,5 +1,4 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { blockInTestDeploy } from '@/lib/testModeServer'
 import { requireAppUser } from '@/lib/supabaseAdmin'
 import { runSync, defaultRange } from '@/lib/mfSync'
 
@@ -17,8 +16,6 @@ function fail(message: string, status = 400) {
  * 既定の範囲（3 か月前の月初〜今日）を同期する。
  */
 export async function GET(req: NextRequest) {
-  const blocked = blockInTestDeploy()
-  if (blocked) return blocked
   const secret = process.env.CRON_SECRET || ''
   const header = req.headers.get('Authorization') || ''
   if (!secret || header !== `Bearer ${secret}`) return fail('認証できません', 401)
@@ -33,8 +30,6 @@ export async function GET(req: NextRequest) {
 
 /** 画面からの手動実行。{ from, to, invoices?, journals? } */
 export async function POST(req: NextRequest) {
-  const blocked = blockInTestDeploy()
-  if (blocked) return blocked
   const auth = await requireAppUser(req, '/mf')
   if (!auth.ok) return fail(auth.message, auth.status)
   const body = (await req.json().catch(() => ({}))) as { from?: string; to?: string; invoices?: boolean; journals?: boolean }
