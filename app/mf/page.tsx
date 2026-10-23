@@ -237,7 +237,7 @@ export default function MfPage() {
                     </p>
                   )}
                   <p className="mt-2 text-xs text-black/50">
-                    権限：{status.scopes.join(' / ')}（すべて読み取りのみ）　リダイレクト先：{status.redirectUri}
+                    権限：{status.scopes.join(' / ')}（読み取り＋請求書の作成。作成は基幹システムの「請求書」でボタンを押したときだけ）　リダイレクト先：{status.redirectUri}
                   </p>
                 </div>
                 <div className="flex gap-2">

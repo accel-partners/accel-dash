@@ -7,14 +7,15 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "cf:build": "NEXT_PUBLIC_DEPLOY_TARGET=cloudflare-test SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-build-placeholder} opennextjs-cloudflare build",
-    "cf:preview": "NEXT_PUBLIC_DEPLOY_TARGET=cloudflare-test SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-build-placeholder} opennextjs-cloudflare build && opennextjs-cloudflare preview",
-    "cf:deploy": "NEXT_PUBLIC_DEPLOY_TARGET=cloudflare-test SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-build-placeholder} opennextjs-cloudflare build && opennextjs-cloudflare deploy"
+    "cf:build": "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-build-placeholder} opennextjs-cloudflare build",
+    "cf:preview": "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-build-placeholder} opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "cf:deploy": "SUPABASE_SERVICE_ROLE_KEY=${SUPABASE_SERVICE_ROLE_KEY:-build-placeholder} opennextjs-cloudflare build && opennextjs-cloudflare deploy"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.114.0",
     "lucide-react": "^1.39.0",
     "next": "16.4.1",
+    "nodemailer": "^6.9.16",
     "react": "19.2.8",
     "react-dom": "19.2.8",
     "zustand": "^5.0.15"
@@ -23,6 +24,7 @@
     "@opennextjs/cloudflare": "1.20.12",
     "@tailwindcss/postcss": "^4",
     "@types/node": "^20",
+    "@types/nodemailer": "^6.4.17",
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
