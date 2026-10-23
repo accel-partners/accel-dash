@@ -1,52 +1,59 @@
-# Cloudflare テスト版（accel-dash-test）
+# Cloudflare 版 accel-dash（Worker：accel-dash-test）
 
-accel-dash を OpenNext で Cloudflare Workers に載せ、/jitsumu などが動くかを試すためのテスト版。
-ブランチ `cloudflare-test` だけで使う。本番（Vercel・accel-dash.com・main）には影響しない。
+accel-dash を OpenNext で Cloudflare Workers に載せたもの。Vercel から Cloudflare への引っ越しのために作った。
+2026-10-23 に、テスト用のしかけ（機能の停止・上部の黄色い帯・NEXT_PUBLIC_DEPLOY_TARGET）を外した。今は本番と同じ中身で動く。
 
-## 本番との違い
+- Worker 名は `accel-dash-test` のまま（wrangler.jsonc の name）。名前の整理は引っ越しが全部終わってから。
+- データは本番と同じ Supabase。テスト版の URL で登録・変更・削除すると本番にも反映される。試しの登録は「テスト」と分かる名前にして、あとで消す。
 
-| | 本番（Vercel） | テスト版（Cloudflare） |
+## Vercel との関係
+
+| | Vercel | Cloudflare |
 |---|---|---|
-| URL | accel-dash.com | `accel-dash-test.<アカウント>.workers.dev`（仮URL） |
-| ログイン | .accel-dash.com の Cookie で CRM などと共有 | workers.dev 単独でログイン（パスワード） |
-| データ | Supabase（本番） | **同じ Supabase（本番データ）** |
-| MF 連携（/api/mf/connect・callback・sync） | 使える | 止めている（403） |
-| チャットワークのテスト送信・未入金通知 | 使える | 止めている（403） |
-| 資料置き場の登録・編集・削除・並べ替え | 使える | 止めている（「テスト版では使えません」） |
-| 画像のアップロード・画像検索（/api/upload・/api/images） | 使える | 止めている（403） |
-| 定期実行（Cron） | Vercel Cron（MF 同期 1:00 UTC、未入金通知 1:30 UTC） | なし（wrangler.jsonc に書かない） |
+| 読むブランチ | main | 今は `cloudflare-test`（main にマージした後は main に変える） |
+| URL | accel-dash.com（切替まで） | `accel-dash-test.signup-3e3.workers.dev`。切替の日に accel-dash.com を付ける |
+| 定期実行（MF 同期 1:00 UTC・未入金通知 1:30 UTC） | **動く**（vercel.json の crons） | **作らない**（wrangler.jsonc に triggers を書かない。二重に動かさないため） |
 
-- テスト版の画面上部に、テスト版であることを知らせる帯が出る。
-- データは本番と同じ。テスト版で登録・変更・削除すると本番にも反映される。試しの登録は「テスト」と分かる名前にして、あとで消す。
-- テスト版の切り替えは `NEXT_PUBLIC_DEPLOY_TARGET=cloudflare-test`（`lib/testMode.ts`）。ビルド時に埋め込まれる。本番では未設定。
+- Vercel は 2026年11月末まで予備として残す。
+- Vercel の定期実行は、Vercel 自身の住所（`*.vercel.app`）を呼ぶ。accel-dash.com を Cloudflare に切り替えても止まらない。
+- `vercel.json` の `git.deploymentEnabled` で `cloudflare-test` ブランチを Vercel で作らないようにしている（main には影響しない）。
 
-## Workers Builds の設定（Cloudflare の画面）
+## ビルドの設定（Cloudflare の Settings → Builds）
 
-Workers & Pages → 作成 → リポジトリをインポート（GitHub は accel-dash だけ許可）。
+- Production branch：`cloudflare-test`（main にマージした後は `main`）
+- Build command：`npm run cf:build`
+- Deploy command：`npx wrangler deploy`
+- 新しくビルドしたいときは、そのブランチに push する。Retry build は失敗したときのブランチ・コミットのまま作り直すので使わない。
 
-- 本番ブランチ（Production branch）：`cloudflare-test`
-- ビルドコマンド：`npm run cf:build`
-- デプロイコマンド：`npx opennextjs-cloudflare deploy`
-- Worker 名：`accel-dash-test`（wrangler.jsonc の name と同じにする）
+## 変数の入れ場所（2か所あるので注意）
 
-### Build variables（ビルド時の変数）
-
+**Settings → Builds の「Variables and secrets」**（ビルドのときに使う）
 - `NEXT_PUBLIC_SUPABASE_URL`
 - `NEXT_PUBLIC_SUPABASE_ANON_KEY`
+- `NEXT_PUBLIC_*` はビルドのときに埋め込まれる。値を変えたら作り直しが要る。
 
-`SUPABASE_SERVICE_ROLE_KEY` はビルド時には入れない。`lib/supabaseAdmin.ts` が読み込み時に鍵を必要とするため、`cf:build` は未設定なら仮の値（build-placeholder）でビルドする。仮の値はビルド結果に残らず、動くときは下の Worker の Secret が使われる。
+**Settings の「Runtime variables and secrets」**（動くときに使う。画面のいちばん上）
+- `NEXT_PUBLIC_SUPABASE_URL`
+- `SUPABASE_SERVICE_ROLE_KEY`（Secret）
+- 秘密の鍵は本人が Cloudflare の画面に直接入力する。チャット・文書・GitHub には書かない。
 
-### Worker の変数（Settings → Variables and Secrets）
+`SUPABASE_SERVICE_ROLE_KEY` はビルドの欄には入れない。`lib/supabaseAdmin.ts` が読み込み時に鍵を必要とするため、`cf:build` は未設定なら仮の値（build-placeholder）でビルドする。仮の値はビルド結果に残らない。
 
-- `NEXT_PUBLIC_SUPABASE_URL`（テキスト）
-- `SUPABASE_SERVICE_ROLE_KEY`（**Secret**。本人が Cloudflare の画面に直接入力する。チャットや GitHub には貼らない）
-- `NEXT_PUBLIC_APP_URL`（テキスト。テスト版の仮URL）
+wrangler.jsonc の `keep_vars: true` で、画面で入れた変数がデプロイのたびに消えないようにしている。
 
-`NEXT_PUBLIC_DEPLOY_TARGET` は wrangler.jsonc と cf:build で設定済みなので入れなくてよい。
+## Cloudflare にまだ入れていない鍵と、そのため使えない機能
 
-### 入れないもの
+| 鍵 | 使えない機能 |
+|---|---|
+| `MF_CLIENT_ID` / `MF_CLIENT_SECRET` | /mf の接続・手動の同期（画面に「未設定」と出る）。請求書の作成 |
+| `CRON_SECRET` | 定期実行用（Cloudflare では動かさないので不要）。そのため /mf に「自動同期は止まっています」と出るが、実際の自動同期は Vercel で動いている |
+| `CHATWORK_API_TOKEN` | チャットワークのテスト送信・未入金通知（通知は Vercel の定期実行が送る） |
+| `BILLING_API_SECRET` | 請求書のアドマネージャー連携、**資料置き場の書き出し（/api/docs/export。アドマネージャーの claude.ai 接続が使う）** |
+| `SMTP_*` / `MAIL_*` | 請求書のメール送信 |
+| `UNSPLASH_ACCESS_KEY` | 画像のフリー素材検索 |
+| `NEXT_PUBLIC_APP_URL` | 未設定のときは https://accel-dash.com として扱う（MF 連携・書き出しの URL） |
 
-`MF_CLIENT_ID` / `MF_CLIENT_SECRET` / `MF_REDIRECT_URI` / `CHATWORK_API_TOKEN` / `CRON_SECRET` / `UNSPLASH_ACCESS_KEY`
+入れるときは、元の値の控えがなければ新しく発行する。`BILLING_API_SECRET` はアドマネージャーと同じ値にする必要がある（24文字以上）。
 
 ## 手元での確認
 
@@ -57,22 +64,16 @@ NEXT_PUBLIC_SUPABASE_URL=... NEXT_PUBLIC_SUPABASE_ANON_KEY=... npm run cf:build
 npx wrangler dev
 ```
 
-## Vercel 側
+Vercel 用のビルド（`npm run build`）も通ることを確かめてから main に入れる。
 
-`vercel.json` の `git.deploymentEnabled` で `cloudflare-test` を除外している。
-Vercel のプレビュー版ではテスト版の機能停止が効かないため、このブランチを Vercel で作らない。
+## 切替と戻し方
 
-## 元に戻す
+- 切替：Cloudflare の Worker → Domains → Add Domain で accel-dash.com を付ける。
+- 戻す：Worker から accel-dash.com を外し、DNS に Vercel 向けの行（CNAME @ → Vercel の値）を入れ直す。数分で Vercel に戻る。
+- Cloudflare 版をやめるとき：Worker `accel-dash-test` を削除する。Vercel はそのまま動く。
 
-GitHub で `cloudflare-test` ブランチを削除し、Cloudflare の Worker `accel-dash-test` を削除する。
+## 経緯
 
-## 実際の設定メモ（2026-10-16）
-
-- リポジトリは GitHub Organization に移した：`accel-partners/accel-dash`（旧 `ninomiyalisting-glitch/accel-dash` は自動転送）
-- Cloudflare の GitHub 連携は accel-partners に許可（accel-dash のみ）
-- 作成時の簡易画面にはブランチの欄がなく、最初のビルドは main で動いて失敗する（main には cf:build がないため。正常）
-- Settings → Builds の「Production branch」を `cloudflare-test` に変更
-- Deploy command は既定の `npx wrangler deploy` のままで動く
-- ビルド時の変数：Settings → Builds の「Variables and secrets」
-- 動くときの変数：Settings の「Runtime variables and secrets」（秘密鍵は Secret。Supabase の新形式の secret key `cloudflare_test` を作って使用）
-- 新しくビルドしたいときは cloudflare-test に push する（Retry build は失敗したときのブランチ・コミットのまま作り直す）
+- 2026-10-16：テスト版を作成（OpenNext、Next 16.4.1）。MF 連携・通知・資料置き場の登録などを止めて試した。
+- 2026-10-19〜20：資料置き場・画像・実務従事・チャットワーク（テスト用ルームだけ）を確認。
+- 2026-10-23：最新の main を取り込み、テスト用のしかけを外した。資料置き場のファイル添付・共有 URL・画像アップロードを確認。
