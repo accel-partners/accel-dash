@@ -12,10 +12,11 @@ accel-dash を OpenNext で Cloudflare Workers に載せたもの。Vercel か�
 |---|---|---|
 | 読むブランチ | main | 今は `cloudflare-test`（main にマージした後は main に変える） |
 | URL | accel-dash.com（切替まで） | `accel-dash-test.signup-3e3.workers.dev`。切替の日に accel-dash.com を付ける |
-| 定期実行（MF 同期 1:00 UTC・未入金通知 1:30 UTC） | **動く**（vercel.json の crons） | **作らない**（wrangler.jsonc に triggers を書かない。二重に動かさないため） |
+| 定期実行（MF 同期 1:00 UTC・未入金通知 1:30 UTC） | **動かさない**（vercel.json の crons を外した） | **動く**（wrangler.jsonc の triggers.crons → cf-worker.js が API を呼ぶ） |
 
 - Vercel は 2026年11月末まで予備として残す。
-- Vercel の定期実行は、Vercel 自身の住所（`*.vercel.app`）を呼ぶ。accel-dash.com を Cloudflare に切り替えても止まらない。
+- 定期実行は Cloudflare に移した（このブランチを main にマージした時点で、Vercel 側が止まり Cloudflare 側が動き出す）。入口の `cf-worker.js` が、決まった時刻に `Authorization: Bearer <CRON_SECRET>` を付けて /api/mf/sync・/api/receivables/notify を呼ぶ。結果は Cloudflare の Observability（Logs）に `[cron]` で出る。
+- 戻すときは、vercel.json に crons を戻し、wrangler.jsonc の triggers を消す（PR で）。
 - `vercel.json` の `git.deploymentEnabled` で `cloudflare-test` ブランチを Vercel で作らないようにしている（main には影響しない）。
 
 ## ビルドの設定（Cloudflare の Settings → Builds）
@@ -46,8 +47,8 @@ wrangler.jsonc の `keep_vars: true` で、画面で入れた変数がデプロ�
 | 鍵 | 使えない機能 |
 |---|---|
 | `MF_CLIENT_ID` / `MF_CLIENT_SECRET` | /mf の接続・手動の同期（画面に「未設定」と出る）。請求書の作成 |
-| `CRON_SECRET` | 定期実行用（Cloudflare では動かさないので不要）。そのため /mf に「自動同期は止まっています」と出るが、実際の自動同期は Vercel で動いている |
-| `CHATWORK_API_TOKEN` | チャットワークのテスト送信・未入金通知（通知は Vercel の定期実行が送る） |
+| `CRON_SECRET` | 定期実行の合言葉。**定期実行を Cloudflare に移すので必要**（Secret で入れる） |
+| `CHATWORK_API_TOKEN` | チャットワークのテスト送信・未入金通知。**定期実行を Cloudflare に移すので必要** |
 | `BILLING_API_SECRET` | 請求書のアドマネージャー連携、**資料置き場の書き出し（/api/docs/export。アドマネージャーの claude.ai 接続が使う）** |
 | `SMTP_*` / `MAIL_*` | 請求書のメール送信 |
 | `UNSPLASH_ACCESS_KEY` | 画像のフリー素材検索 |
