@@ -3,15 +3,5 @@
     "deploymentEnabled": {
       "cloudflare-test": false
     }
-  },
-  "crons": [
-    {
-      "path": "/api/mf/sync",
-      "schedule": "0 1 * * *"
-    },
-    {
-      "path": "/api/receivables/notify",
-      "schedule": "30 1 * * *"
-    }
-  ]
+  }
 }
