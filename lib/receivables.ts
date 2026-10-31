@@ -40,6 +40,10 @@ interface Recv {
   status: 'open' | 'paid' | 'cancelled' | 'nobill'
   payer?: string
   checked?: boolean
+  checkedAt?: string
+  /** 請求書のない入金を当てた未入金（id と名前） */
+  linkedTo?: string
+  linkedName?: string
   invoiceId?: string
   revenueId?: string
   customerId?: string
@@ -429,7 +433,11 @@ export async function syncReceivables(now = new Date()): Promise<RecvSummary> {
     l.push(memo)
     usedLoose.set(`${d}|${a}`, l)
   }
+  // 請求書のない入金のうち、未確認でまだどの請求にも当てていないものは「使った」にしない。
+  // 未入金の請求の候補や自動照合に使えるように残し、請求に当たったら下（4'）で「確認済み」にする
+  const pendingNb = (r: Recv) => r.status === 'nobill' && !r.checked && !r.linkedTo
   for (const r of recs.values()) {
+    if (pendingNb(r)) continue
     if (r.deposit) { used.add(depKey(r.deposit)); markLoose(depKey(r.deposit)) }
     for (const k of r.deposits ?? []) { used.add(k); markLoose(k) }
   }
@@ -555,6 +563,23 @@ export async function syncReceivables(now = new Date()): Promise<RecvSummary> {
     }
   }
 
+  /* ---- 4') 請求書のない入金（未確認）が、自動照合や候補の消し込みで請求に当たっていたら「確認済み」にする ---- */
+  const takenBy = new Map<string, Recv>()
+  for (const r of recs.values()) {
+    if (r.status === 'nobill') continue
+    for (const k of [...(r.deposits ?? []), ...(r.deposit ? [depKey(r.deposit)] : [])]) takenBy.set(k.replace(/#\d+$/, ''), r)
+  }
+  for (const r of [...recs.values()]) {
+    if (!pendingNb(r)) continue
+    const k = (r.deposits?.[0] ?? (r.deposit ? depKey(r.deposit) : '')).replace(/#\d+$/, '')
+    const t = k ? takenBy.get(k) : undefined
+    if (!t) continue
+    const c = t.customerId ? custs.get(t.customerId) : undefined
+    const next: Recv = { ...r, checked: true, checkedAt: today, linkedTo: t.id, linkedName: c?.name || t.name || t.partner || '' }
+    recs.set(r.id, next)
+    changed.set(r.id, next)
+  }
+
   /* ---- 5) 請求書のない入金：同じ金額の請求書（MF・入金状況は問わない）が近い日付に無く、どの未入金にも使っていない入金 ---- */
   const invByAmount = new Map<number, string[]>()
   for (const row of revRows) {
@@ -567,9 +592,12 @@ export async function syncReceivables(now = new Date()): Promise<RecvSummary> {
   }
   for (const list of byAmount.values()) {
     for (const x of list) {
-      if (!x.d || x.d < autoFrom || isUsed(x) || candKeys.has(x.key)) continue
-      const lo = isoOf(new Date(dayOf(x.d).getTime() - 150 * 86400000)), hi = isoOf(new Date(dayOf(x.d).getTime() + 10 * 86400000))
-      if ((invByAmount.get(x.amount) ?? []).some((b) => b && b >= lo && b <= hi)) continue
+      if (!x.d || x.d < autoFrom || isUsed(x)) continue
+      // 未入金の請求の「候補」になっている入金も、決まるまではここに必ず出す（候補が別の会社の請求に付いて見落とすことがあるため）
+      if (!candKeys.has(depKey(x))) {
+        const lo = isoOf(new Date(dayOf(x.d).getTime() - 150 * 86400000)), hi = isoOf(new Date(dayOf(x.d).getTime() + 10 * 86400000))
+        if ((invByAmount.get(x.amount) ?? []).some((b) => b && b >= lo && b <= hi)) continue
+      }
       const id = `dep-${createHash('sha1').update(x.key).digest('hex').slice(0, 16)}`
       if (recs.has(id)) continue
       const { key: _k, ...dep } = x
