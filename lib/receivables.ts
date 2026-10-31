@@ -165,6 +165,41 @@ function kana(s: string) {
     .replace(/振込|フリコミ|[\s　\-ー・.,()（）]/g, '')
     .toUpperCase()
 }
+/** ローマ字の社名（例：KIZASHI）を、銀行の振込名義のカタカナ（キザシ）と比べられる形にする。変換できない文字があれば空 */
+const ROMA: Record<string, string> = (() => {
+  const m: Record<string, string> = { a: 'ア', i: 'イ', u: 'ウ', e: 'エ', o: 'オ' }
+  const rows: Record<string, string> = { k: 'カキクケコ', s: 'サシスセソ', t: 'タチツテト', n: 'ナニヌネノ', h: 'ハヒフヘホ', m: 'マミムメモ', r: 'ラリルレロ', g: 'ガギグゲゴ', z: 'ザジズゼゾ', d: 'ダヂヅデド', b: 'バビブベボ', p: 'パピプペポ' }
+  for (const [c, ks] of Object.entries(rows)) 'aiueo'.split('').forEach((v, i) => { m[c + v] = ks[i] })
+  for (const [c, k] of Object.entries({ ky: 'キ', sh: 'シ', ch: 'チ', ny: 'ニ', hy: 'ヒ', my: 'ミ', ry: 'リ', gy: 'ギ', by: 'ビ', py: 'ピ', j: 'ジ' })) {
+    m[c + 'a'] = k + 'ャ'; m[c + 'u'] = k + 'ュ'; m[c + 'o'] = k + 'ョ'
+  }
+  Object.assign(m, {
+    ya: 'ヤ', yu: 'ユ', yo: 'ヨ', wa: 'ワ', wo: 'オ', fu: 'フ', shi: 'シ', chi: 'チ', tsu: 'ツ', ji: 'ジ', je: 'ジェ', she: 'シェ', che: 'チェ',
+    fa: 'ファ', fi: 'フィ', fe: 'フェ', fo: 'フォ', ti: 'ティ', di: 'ディ', va: 'バ', vi: 'ビ', vu: 'ブ', ve: 'ベ', vo: 'ボ',
+  })
+  return m
+})()
+function romaji(s: string) {
+  const w = String(s || '').toLowerCase().replace(/l/g, 'r')
+  if (!/^[a-z]{3,}$/.test(w)) return ''
+  let out = ''
+  for (let i = 0; i < w.length;) {
+    const c = w[i], n = w[i + 1] ?? ''
+    if (c === 'n' && (!n || !'aiueoy'.includes(n))) { out += 'ン'; i++; continue }
+    if (n === c && !'aiueo'.includes(c)) { out += 'ツ'; i++; continue }
+    const hit = [3, 2, 1].map((k) => w.slice(i, i + k)).find((k) => ROMA[k])
+    // 母音の付かない子音（英語の綴りの ORIGINAL の L など）は、カタカナにするときの読み方（ル・ト）で
+    if (!hit && ROMA[c + 'u'] && (!n || !'aiueo'.includes(n))) { out += ROMA[c + ('td'.includes(c) ? 'o' : 'u')]; i++; continue }
+    if (!hit) return ''
+    out += ROMA[hit]
+    i += hit.length
+  }
+  return kana(out)
+}
+/** 照合に使う名前：カタカナにそろえた名前と、ローマ字の社名ならカタカナに直したもの */
+function nameKeys(list: unknown[]) {
+  return [...new Set(list.filter(Boolean).flatMap((t) => { const k = kana(String(t)); return [k, romaji(k)] }).filter((t) => t.length >= 2))]
+}
 function lcs(a: string, b: string) {
   if (!a || !b) return 0
   let best = 0
@@ -300,7 +335,7 @@ export async function syncReceivables(now = new Date()): Promise<RecvSummary> {
       aliasOf.set(who, s)
     }
   }
-  const namesOf = (list: unknown[]) => [...new Set(list.filter(Boolean).map((t) => kana(String(t))).filter((t) => t.length >= 2))]
+  const namesOf = nameKeys
 
   for (const row of revRows) {
     const r = row.data as { customerId?: string; individualId?: string; ownerId?: string; note?: string; mf?: Record<string, unknown> }
@@ -491,11 +526,14 @@ export async function syncReceivables(now = new Date()): Promise<RecvSummary> {
   for (const r of openRecs()) {
     if (remaining(r) <= 0) continue // 過入金（入金が請求より多い）は候補を出さない
     const amts = [...new Set([Math.round(Number(r.amount)), remaining(r)].filter((x) => x > 0))]
-    const base = r.billingDate || (r.dueDate ? isoOf(new Date(dayOf(r.dueDate).getTime() - 60 * 86400000)) : '')
+    // 手で登録した未入金（昔からの長期未入金など）は、登録した時点までの入金は反映済み。それより前の入金を候補に出すと、何年も前の別の会社の入金が候補を埋めてしまう（自動照合と同じく登録の 14 日前から）
+    const base = r.source === 'manual' && r.openedAt
+      ? isoOf(new Date(dayOf(r.openedAt).getTime() - 7 * 86400000))
+      : r.billingDate || (r.dueDate ? isoOf(new Date(dayOf(r.dueDate).getTime() - 60 * 86400000)) : '')
     const from = base ? isoOf(new Date(dayOf(base).getTime() - 7 * 86400000)) : ''
     const dismissed = new Set(r.dismissed ?? [])
     const c = r.customerId ? custs.get(r.customerId) : undefined
-    const names = [r.name, r.partner, c?.name, c?.kana].filter(Boolean).map((t) => kana(String(t)))
+    const names = nameKeys([r.name, r.partner, c?.name, c?.kana])
     const aliases = aliasOf.get(r.customerId || r.individualId || '') ?? new Set<string>()
     const due = r.dueDate || r.billingDate || today
     const list = amts.flatMap((a) => byAmount.get(a) ?? [])
